@@ -94,8 +94,9 @@ body,button,input,select{font-family:'Nunito',-apple-system,BlinkMacSystemFont,'
 .hello h1,.quote #quote{font-family:'Dancing Script',cursive!important}
 .target-percent{font-size:clamp(29px,4vw,38px)!important;min-width:90px!important;padding:10px 15px!important}
 @media(max-width:600px){.brand-header{height:78px}.brand-header .logo{width:min(60%,250px)}.brand-header .logo img{max-height:52px}}
+.toast{z-index:50!important}
 </style></head><body><div class="app"><header class="brand-header"><div class="brand-silhouette" aria-hidden="true"></div><div class="logo"><img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/XLSmart.svg" alt="XLSMART"></div><button class="profile-trigger" id="openProfileBtn" type="button" aria-label="Buka profil"><span class="profile-trigger-icon">♙</span><span class="profile-trigger-dot"></span><span class="profile-trigger-chevron">⌄</span></button></header>
-<main><div class="version">Dashboard V21</div><div class="hello"><div><p class="greet" id="greet">Selamat pagi,</p><h1>Jalludin 👋</h1><p class="sub">Selamat bekerja. Tetap konsisten!</p></div><span class="role">Outstore Promotor</span></div><div class="quote"><span class="quote-mark">“</span><span id="quote">Hasil besar dimulai dari langkah kecil yang konsisten.</span><span class="quote-mark">”</span></div>
+<main><div class="version">Dashboard V22</div><div class="hello"><div><p class="greet" id="greet">Selamat pagi,</p><h1>Jalludin 👋</h1><p class="sub">Selamat bekerja. Tetap konsisten!</p></div><span class="role">Outstore Promotor</span></div><div class="quote"><span class="quote-mark">“</span><span id="quote">Hasil besar dimulai dari langkah kecil yang konsisten.</span><span class="quote-mark">”</span></div>
 <div class="kpi-layout">
 <div class="metric total-metric"><span>Total Activation</span><strong id="act">0</strong></div>
 <div class="mini-stack"><div class="metric regular-metric"><span>Reguler</span><strong id="regular">0</strong></div><div class="metric seeding-metric"><span>Seeding</span><strong id="seed">0</strong></div></div>
@@ -129,7 +130,7 @@ function load(){api('getInitialData',null,data=>{D=data||{};const sum=D.summary|
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function statusClass(s){return s==='BAD SRC'?'bad':s==='Eligible'?'good':''}
 function setMode(next){mode=next;document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.mode===next));$('normal').classList.toggle('hidden',next==='BAD SRC');$('badform').classList.toggle('hidden',next!=='BAD SRC');if(next!=='BAD SRC')$('number').focus();else $('query').focus()}
-function addCardToDraft(keepFocus=true){const input=$('number');const n=String(input.value||'').replace(/\D/g,'');if(n.length<8){toast('Nomor minimal 8 digit.');input.focus();return}const canonical=canonicalPhone(n);if(draft.some(x=>canonicalPhone(x)===canonical)){toast('Nomor sudah diinput dalam daftar sementara.');input.value='';return}input.disabled=true;$('addNumberBtn').disabled=true;api('checkNumberRegistered',n,result=>{input.disabled=false;$('addNumberBtn').disabled=false;if(result&&result.exists){toast('Nomor sudah terdaftar / sudah pernah diinput.');input.value='';if(keepFocus)input.focus();return}draft.push(canonical);input.value='';renderDraft();if(keepFocus)input.focus()},()=>{input.disabled=false;$('addNumberBtn').disabled=false})}
+function addCardToDraft(keepFocus=true,onAdded){const input=$('number');const n=String(input.value||'').replace(/\D/g,'');if(n.length<8){toast('Nomor minimal 8 digit.');input.focus();return}const canonical=canonicalPhone(n);if(draft.some(x=>canonicalPhone(x)===canonical)){toast('Nomor sudah diinput dalam daftar sementara.');input.value='';return}input.disabled=true;$('addNumberBtn').disabled=true;api('checkNumberRegistered',n,result=>{input.disabled=false;$('addNumberBtn').disabled=false;if(result&&result.exists){toast('Nomor sudah terdaftar / sudah pernah diinput.');input.value='';if(keepFocus)input.focus();return}draft.push(canonical);input.value='';renderDraft();if(keepFocus)input.focus();if(typeof onAdded==='function')onAdded(canonical)},()=>{input.disabled=false;$('addNumberBtn').disabled=false})}
 function canonicalPhone(v){let n=String(v||'').replace(/\D/g,'');if(n.startsWith('62'))n='0'+n.slice(2);else if(n.startsWith('8'))n='0'+n;return n}
 function renderDraft(){$('count').textContent=draft.length+' nomor';$('draft').className=draft.length?'':'empty';$('draft').innerHTML=draft.length?draft.map((n,i)=>`<div class="item"><b>${i+1}. ${esc(n)}</b><button class="btn danger small" type="button" data-action="remove-draft" data-index="${i}">Hapus</button></div>`).join(''):'Belum ada nomor ditambahkan.'}
 function saveBatch(){if(!draft.length){toast('Daftar masih kosong. Masukkan nomor lalu tekan +.');return}const payload={brand:$('brand').value,category:mode,date:$('date').value,numbers:draft.slice()};$('saveActivationBtn').disabled=true;$('saveActivationBtn').textContent='Menyimpan...';api('saveActivationBatch',payload,result=>{$('saveActivationBtn').disabled=false;$('saveActivationBtn').textContent='Simpan Aktivasi';const added=(result.added||[]).length,dups=(result.duplicates||[]).length,invalid=(result.invalid||[]).length;if(added)draft=[];renderDraft();if(dups){toast('Nomor sudah terdaftar: '+result.duplicates.join(', '));}else if(invalid){toast('Ada nomor tidak valid. Tersimpan: '+added);}else{toast('Aktivasi berhasil disimpan: '+added+' nomor.')}load()},()=>{$('saveActivationBtn').disabled=false;$('saveActivationBtn').textContent='Simpan Aktivasi'})}
@@ -202,10 +203,16 @@ async function startLiveCamera(){
  }
 }
 let cameraFacing='environment';
+let scanLock=false;
 function handleLiveBarcode(raw){
- const candidate=extractPhoneCandidate(raw);if(!candidate){$('scanStatus').textContent='Terbaca: '+String(raw).slice(0,40)+' (bukan nomor HP). Coba barcode lainnya di kartu.';return;}
+ if(scanLock)return;
+ const candidate=extractPhoneCandidate(raw);
+ if(!candidate){$('scanStatus').textContent='Terbaca: '+String(raw).slice(0,40)+' (bukan nomor HP). Coba barcode lainnya di kartu.';return;}
  if(draft.includes(candidate)){$('scanStatus').textContent='Nomor '+candidate+' sudah ada di daftar. Arahkan ke kartu berikutnya.';return;}
- $('number').value=candidate;addCardToDraft(false);$('scanStatus').textContent='Berhasil ditambahkan: '+candidate+'. Arahkan kartu berikutnya.';toast('Nomor '+candidate+' ditambahkan. Scanner tetap aktif.');
+ scanLock=true;setTimeout(()=>{scanLock=false},2500);
+ $('scanStatus').textContent='Terbaca: '+candidate+'. Menyimpan ke daftar...';
+ $('number').value=candidate;
+ addCardToDraft(false,n=>{stopScanner();closeModal();toast('Nomor '+n+' ditambahkan ke daftar.');});
 }
 function stopScanner(){
  if(scannerTimer){clearTimeout(scannerTimer);scannerTimer=null;}
@@ -215,6 +222,7 @@ function stopScanner(){
 }
 function extractPhoneCandidate(raw){
  const digits=String(raw||'').replace(/\D/g,'');
+ if(digits.length>=18&&digits.startsWith('89'))return '';
  const candidates=[digits,...(digits.match(/(?:62|0)?8\d{8,12}/g)||[])];
  for(let n of candidates){if(n.startsWith('62'))n='0'+n.slice(2);else if(n.startsWith('8'))n='0'+n;if(/^08\d{8,11}$/.test(n))return n;}
  return '';
