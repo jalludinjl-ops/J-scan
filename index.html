@@ -95,7 +95,7 @@ body,button,input,select{font-family:'Nunito',-apple-system,BlinkMacSystemFont,'
 .target-percent{font-size:clamp(29px,4vw,38px)!important;min-width:90px!important;padding:10px 15px!important}
 @media(max-width:600px){.brand-header{height:78px}.brand-header .logo{width:min(60%,250px)}.brand-header .logo img{max-height:52px}}
 </style></head><body><div class="app"><header class="brand-header"><div class="brand-silhouette" aria-hidden="true"></div><div class="logo"><img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/XLSmart.svg" alt="XLSMART"></div><button class="profile-trigger" id="openProfileBtn" type="button" aria-label="Buka profil"><span class="profile-trigger-icon">♙</span><span class="profile-trigger-dot"></span><span class="profile-trigger-chevron">⌄</span></button></header>
-<main><div class="version">Dashboard V20</div><div class="hello"><div><p class="greet" id="greet">Selamat pagi,</p><h1>Jalludin 👋</h1><p class="sub">Selamat bekerja. Tetap konsisten!</p></div><span class="role">Outstore Promotor</span></div><div class="quote"><span class="quote-mark">“</span><span id="quote">Hasil besar dimulai dari langkah kecil yang konsisten.</span><span class="quote-mark">”</span></div>
+<main><div class="version">Dashboard V21</div><div class="hello"><div><p class="greet" id="greet">Selamat pagi,</p><h1>Jalludin 👋</h1><p class="sub">Selamat bekerja. Tetap konsisten!</p></div><span class="role">Outstore Promotor</span></div><div class="quote"><span class="quote-mark">“</span><span id="quote">Hasil besar dimulai dari langkah kecil yang konsisten.</span><span class="quote-mark">”</span></div>
 <div class="kpi-layout">
 <div class="metric total-metric"><span>Total Activation</span><strong id="act">0</strong></div>
 <div class="mini-stack"><div class="metric regular-metric"><span>Reguler</span><strong id="regular">0</strong></div><div class="metric seeding-metric"><span>Seeding</span><strong id="seed">0</strong></div></div>
@@ -157,23 +157,42 @@ async function startLiveCamera(){
  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){status.textContent='Browser tidak menyediakan akses kamera. Pastikan halaman dibuka lewat https di Safari.';return;}
  try{
   stopScanner();
-  const constraints={audio:false,video:{facingMode:{ideal:cameraFacing},width:{ideal:1280},height:{ideal:720}}};
+  const constraints={audio:false,video:{facingMode:{ideal:cameraFacing},width:{ideal:1920},height:{ideal:1080}}};
   scannerStream=await navigator.mediaDevices.getUserMedia(constraints);
   video.srcObject=scannerStream;await video.play();
   status.textContent='Kamera aktif. Arahkan barcode ke kotak pemindaian.';
-  if(window.BarcodeDetector){
-   let detector;
-   try{detector=new BarcodeDetector({formats:['qr_code','code_128','code_39','ean_13','ean_8','itf','upc_a','upc_e']});}catch(_){detector=new BarcodeDetector()}
-   const scanFrame=async()=>{
-    if(!scannerStream||!video.isConnected)return;
-    try{if(video.readyState>=2){const codes=await detector.detect(video);if(codes&&codes.length){handleLiveBarcode(codes[0].rawValue);return;}}}catch(_e){}
-    scannerTimer=setTimeout(scanFrame,180);
-   };scanFrame();
-  }else if(window.ZXing&&ZXing.BrowserMultiFormatReader){
-   const hints=new Map();if(ZXing.DecodeHintType&&ZXing.BarcodeFormat){hints.set(ZXing.DecodeHintType.TRY_HARDER,true);hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.QR_CODE,ZXing.BarcodeFormat.CODE_128,ZXing.BarcodeFormat.CODE_39,ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8,ZXing.BarcodeFormat.ITF,ZXing.BarcodeFormat.UPC_A,ZXing.BarcodeFormat.UPC_E]);}
-   scannerReader=new ZXing.BrowserMultiFormatReader(hints);
-   scannerReader.decodeFromVideoElementContinuously(video,(result,_err)=>{if(result)handleLiveBarcode(result.getText());});
-  }else{status.textContent='Mesin pembaca barcode tidak termuat. Periksa koneksi internet lalu coba lagi.';}
+  try{const track=scannerStream.getVideoTracks()[0],caps=track.getCapabilities?track.getCapabilities():{};if(caps.focusMode&&caps.focusMode.includes('continuous'))await track.applyConstraints({advanced:[{focusMode:'continuous'}]});}catch(_e){}
+  let detector=null,zx=null;
+  if(window.BarcodeDetector){try{detector=new BarcodeDetector()}catch(_e){}}
+  if(window.ZXing&&ZXing.MultiFormatReader&&ZXing.HTMLCanvasElementLuminanceSource&&ZXing.HybridBinarizer&&ZXing.BinaryBitmap){
+   const hints=new Map(),F=ZXing.BarcodeFormat;
+   hints.set(ZXing.DecodeHintType.TRY_HARDER,true);
+   hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[F.QR_CODE,F.CODE_128,F.CODE_39,F.EAN_13,F.EAN_8,F.ITF,F.UPC_A,F.UPC_E,F.DATA_MATRIX].filter(Boolean));
+   zx=new ZXing.MultiFormatReader();zx.setHints(hints);
+  }
+  if(!detector&&!zx){status.textContent='Mesin pembaca barcode tidak termuat. Periksa koneksi internet lalu coba lagi.';return;}
+  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
+  let lastRaw='',lastAt=0;
+  const scanFrame=async()=>{
+   if(!scannerStream||!video.isConnected)return;
+   try{
+    if(video.readyState>=2&&video.videoWidth){
+     const vw=video.videoWidth,vh=video.videoHeight;
+     const regions=[[0,0,vw,vh],[vw*0.05,vh*0.15,vw*0.9,vh*0.7]];
+     let raw='';
+     for(const r of regions){
+      canvas.width=Math.round(r[2]);canvas.height=Math.round(r[3]);
+      ctx.drawImage(video,r[0],r[1],r[2],r[3],0,0,canvas.width,canvas.height);
+      if(detector){try{const c=await detector.detect(canvas);if(c&&c.length)raw=c[0].rawValue||'';}catch(_e){}}
+      if(!raw&&zx){try{raw=zx.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(canvas)))).getText();}catch(_e){}}
+      if(raw)break;
+     }
+     if(raw&&!(raw===lastRaw&&Date.now()-lastAt<2500)){lastRaw=raw;lastAt=Date.now();handleLiveBarcode(raw);}
+    }
+   }catch(_e){}
+   scannerTimer=setTimeout(scanFrame,220);
+  };
+  scanFrame();
  }catch(err){
   let msg=err&&err.message?err.message:String(err);
   if(err&&(['NotAllowedError','PermissionDeniedError'].includes(err.name)))msg='Akses kamera ditolak. Izinkan kamera untuk situs ini: Pengaturan Safari → Kamera → Izinkan, lalu muat ulang halaman.';
@@ -184,7 +203,7 @@ async function startLiveCamera(){
 }
 let cameraFacing='environment';
 function handleLiveBarcode(raw){
- const candidate=extractPhoneCandidate(raw);if(!candidate){$('scanStatus').textContent='Barcode terdeteksi, tetapi isinya bukan nomor HP yang dikenali. Arahkan ke barcode nomor kartu.';return;}
+ const candidate=extractPhoneCandidate(raw);if(!candidate){$('scanStatus').textContent='Terbaca: '+String(raw).slice(0,40)+' (bukan nomor HP). Coba barcode lainnya di kartu.';return;}
  if(draft.includes(candidate)){$('scanStatus').textContent='Nomor '+candidate+' sudah ada di daftar. Arahkan ke kartu berikutnya.';return;}
  $('number').value=candidate;addCardToDraft(false);$('scanStatus').textContent='Berhasil ditambahkan: '+candidate+'. Arahkan kartu berikutnya.';toast('Nomor '+candidate+' ditambahkan. Scanner tetap aktif.');
 }
