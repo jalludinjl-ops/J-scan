@@ -95,8 +95,9 @@ body,button,input,select{font-family:'Nunito',-apple-system,BlinkMacSystemFont,'
 .target-percent{font-size:clamp(29px,4vw,38px)!important;min-width:90px!important;padding:10px 15px!important}
 @media(max-width:600px){.brand-header{height:78px}.brand-header .logo{width:min(60%,250px)}.brand-header .logo img{max-height:52px}}
 .toast{z-index:50!important}
+.scanner-frame{max-width:min(100%,440px);margin:12px auto 0!important}.scanner-video{height:auto!important;aspect-ratio:1/1;max-height:56vh;object-fit:cover}.scanner-guide{left:14%!important;right:14%!important;top:14%!important;height:72%!important;border-radius:16px!important}
 </style></head><body><div class="app"><header class="brand-header"><div class="brand-silhouette" aria-hidden="true"></div><div class="logo"><img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/XLSmart.svg" alt="XLSMART"></div><button class="profile-trigger" id="openProfileBtn" type="button" aria-label="Buka profil"><span class="profile-trigger-icon">♙</span><span class="profile-trigger-dot"></span><span class="profile-trigger-chevron">⌄</span></button></header>
-<main><div class="version">Dashboard V22</div><div class="hello"><div><p class="greet" id="greet">Selamat pagi,</p><h1>Jalludin 👋</h1><p class="sub">Selamat bekerja. Tetap konsisten!</p></div><span class="role">Outstore Promotor</span></div><div class="quote"><span class="quote-mark">“</span><span id="quote">Hasil besar dimulai dari langkah kecil yang konsisten.</span><span class="quote-mark">”</span></div>
+<main><div class="version">Dashboard V23</div><div class="hello"><div><p class="greet" id="greet">Selamat pagi,</p><h1>Jalludin 👋</h1><p class="sub">Selamat bekerja. Tetap konsisten!</p></div><span class="role">Outstore Promotor</span></div><div class="quote"><span class="quote-mark">“</span><span id="quote">Hasil besar dimulai dari langkah kecil yang konsisten.</span><span class="quote-mark">”</span></div>
 <div class="kpi-layout">
 <div class="metric total-metric"><span>Total Activation</span><strong id="act">0</strong></div>
 <div class="mini-stack"><div class="metric regular-metric"><span>Reguler</span><strong id="regular">0</strong></div><div class="metric seeding-metric"><span>Seeding</span><strong id="seed">0</strong></div></div>
@@ -148,6 +149,7 @@ function editRecord(id){const r=(D&&D.recent||[]).find(x=>x.id===id);if(!r)retur
 function saveEdit(id){const changes={number:$('editNumber').value,brand:$('editBrand').value,category:$('editCategory').value,activationDate:$('editDate').value};api('updateActivation',{id,changes},()=>{closeModal();toast('Data diperbarui.');load()})}
 function deleteRecord(id){if(!confirm('Hapus nomor ini? Data akan diarsipkan.'))return;api('deleteActivation',id,()=>{closeModal();toast('Nomor dihapus dari daftar aktif.');load()})}
 function startScanner(){
+ initAudio();
  showModal('Live Barcode Scanner',`<p class="scanner-note" style="color:#e8f0ff">Arahkan barcode atau QR kartu ke dalam kotak. Kamera belakang akan aktif langsung. Saat terbaca, nomor otomatis ditambahkan ke daftar sementara.</p><div class="scanner-frame"><video id="liveScannerVideo" class="scanner-video" autoplay muted playsinline></video><div class="scanner-guide"></div></div><p id="scanStatus" class="scanner-status" aria-live="polite">Meminta izin kamera...</p><div class="scan-actions"><button class="btn light full" type="button" data-action="switch-camera">Ganti Kamera</button><button class="btn danger full" type="button" data-action="close-scan">Tutup Scanner</button></div>`);
  $('modal').classList.add('scanner-modal');
  startLiveCamera();
@@ -179,7 +181,7 @@ async function startLiveCamera(){
    try{
     if(video.readyState>=2&&video.videoWidth){
      const vw=video.videoWidth,vh=video.videoHeight;
-     const regions=[[0,0,vw,vh],[vw*0.05,vh*0.15,vw*0.9,vh*0.7]];
+     const s=Math.min(vw,vh)*0.8,regions=[[0,0,vw,vh],[(vw-s)/2,(vh-s)/2,s,s]];
      let raw='';
      for(const r of regions){
       canvas.width=Math.round(r[2]);canvas.height=Math.round(r[3]);
@@ -203,16 +205,31 @@ async function startLiveCamera(){
  }
 }
 let cameraFacing='environment';
-let scanLock=false;
+let scanLock=false,audioCtx=null;
+function initAudio(){try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;audioCtx=audioCtx||new AC();if(audioCtx.state==='suspended')audioCtx.resume();}catch(_e){}}
+function beep(){
+ try{if(navigator.vibrate)navigator.vibrate(80)}catch(_e){}
+ try{
+  initAudio();if(!audioCtx)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain(),t=audioCtx.currentTime;
+  o.type='sine';o.frequency.value=1500;
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.4,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+0.16);
+  o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+0.18);
+ }catch(_e){}
+}
 function handleLiveBarcode(raw){
  if(scanLock)return;
  const candidate=extractPhoneCandidate(raw);
  if(!candidate){$('scanStatus').textContent='Terbaca: '+String(raw).slice(0,40)+' (bukan nomor HP). Coba barcode lainnya di kartu.';return;}
- if(draft.includes(candidate)){$('scanStatus').textContent='Nomor '+candidate+' sudah ada di daftar. Arahkan ke kartu berikutnya.';return;}
- scanLock=true;setTimeout(()=>{scanLock=false},2500);
- $('scanStatus').textContent='Terbaca: '+candidate+'. Menyimpan ke daftar...';
- $('number').value=candidate;
- addCardToDraft(false,n=>{stopScanner();closeModal();toast('Nomor '+n+' ditambahkan ke daftar.');});
+ if(draft.some(x=>canonicalPhone(x)===candidate)){$('scanStatus').textContent='Nomor '+candidate+' sudah ada di daftar. Arahkan ke kartu berikutnya.';return;}
+ scanLock=true;setTimeout(()=>{scanLock=false},1500);
+ beep();
+ draft.push(candidate);renderDraft();
+ stopScanner();closeModal();
+ toast('Nomor '+candidate+' ditambahkan ke daftar.');
+ api('checkNumberRegistered',candidate,res=>{
+  if(res&&res.exists){const i=draft.indexOf(candidate);if(i>-1){draft.splice(i,1);renderDraft();}toast('Nomor '+candidate+' sudah terdaftar, dihapus dari daftar.');}
+ });
 }
 function stopScanner(){
  if(scannerTimer){clearTimeout(scannerTimer);scannerTimer=null;}
