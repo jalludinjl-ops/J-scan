@@ -97,7 +97,7 @@ body,button,input,select{font-family:'Nunito',-apple-system,BlinkMacSystemFont,'
 .toast{z-index:50!important}
 .scanner-frame{max-width:min(100%,440px);margin:12px auto 0!important}.scanner-video{height:auto!important;aspect-ratio:1/1;max-height:56vh;object-fit:cover}.scanner-guide{left:14%!important;right:14%!important;top:14%!important;height:72%!important;border-radius:16px!important}
 </style></head><body><div class="app"><header class="brand-header"><div class="brand-silhouette" aria-hidden="true"></div><div class="logo"><img src="https://commons.wikimedia.org/wiki/Special:Redirect/file/XLSmart.svg" alt="XLSMART"></div><button class="profile-trigger" id="openProfileBtn" type="button" aria-label="Buka profil"><span class="profile-trigger-icon">♙</span><span class="profile-trigger-dot"></span><span class="profile-trigger-chevron">⌄</span></button></header>
-<main><div class="version">Dashboard V23</div><div class="hello"><div><p class="greet" id="greet">Selamat pagi,</p><h1>Jalludin 👋</h1><p class="sub">Selamat bekerja. Tetap konsisten!</p></div><span class="role">Outstore Promotor</span></div><div class="quote"><span class="quote-mark">“</span><span id="quote">Hasil besar dimulai dari langkah kecil yang konsisten.</span><span class="quote-mark">”</span></div>
+<main><div class="version">Dashboard V24</div><div class="hello"><div><p class="greet" id="greet">Selamat pagi,</p><h1>Jalludin 👋</h1><p class="sub">Selamat bekerja. Tetap konsisten!</p></div><span class="role">Outstore Promotor</span></div><div class="quote"><span class="quote-mark">“</span><span id="quote">Hasil besar dimulai dari langkah kecil yang konsisten.</span><span class="quote-mark">”</span></div>
 <div class="kpi-layout">
 <div class="metric total-metric"><span>Total Activation</span><strong id="act">0</strong></div>
 <div class="mini-stack"><div class="metric regular-metric"><span>Reguler</span><strong id="regular">0</strong></div><div class="metric seeding-metric"><span>Seeding</span><strong id="seed">0</strong></div></div>
@@ -141,8 +141,9 @@ function clearBadSelection(){badSelected.clear();document.querySelectorAll('#res
 function processBadSelection(){const ids=[...badSelected];if(!ids.length)return;if(!confirm('Ubah '+ids.length+' nomor terpilih menjadi BAD SRC?'))return;$('processBadBtn').disabled=true;api('markBadSrcBatch',ids,res=>{badSelected.clear();$('query').value='';$('results').innerHTML='';updateBadSelection();toast('Berhasil memproses '+(res.updated||0)+' nomor menjadi BAD SRC.');load()},()=>updateBadSelection())}
 function openTarget(){const month=localDate(new Date()).slice(0,7);api('getMonthlyTarget',month,data=>{const t=data||{};showModal('Pengaturan Target Bulanan',`<p class="target-modal-note">Atur target NCA per brand untuk bulan ${esc(month)}. Total target akan dijumlahkan otomatis.</p><div class="target-summary"><div class="target-field"><label for="targetSmartfren">Smartfren</label><input id="targetSmartfren" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="0" value="${t.smartfren?Number(t.smartfren):''}"></div><div class="target-field"><label for="targetXL">XL</label><input id="targetXL" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="0" value="${t.xl?Number(t.xl):''}"></div><div class="target-field"><label for="targetAXIS">AXIS</label><input id="targetAXIS" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="0" value="${t.axis?Number(t.axis):''}"></div></div><button class="btn full" type="button" data-action="save-target">Simpan Target</button>`);$('targetSmartfren').focus()})}
 function saveTarget(){const data={period:localDate(new Date()).slice(0,7),smartfren:$('targetSmartfren').value.trim()||0,xl:$('targetXL').value.trim()||0,axis:$('targetAXIS').value.trim()||0};const btn=$('mb').querySelector('[data-action=save-target]');if(btn){btn.disabled=true;btn.textContent='Menyimpan...'}api('saveMonthlyTarget',data,result=>{if(!result||result.ok!==true){if(btn){btn.disabled=false;btn.textContent='Simpan Target'}toast('Target belum berhasil disimpan.');return}closeModal();toast('Target tersimpan: '+result.total+' NCA.');load()},()=>{if(btn){btn.disabled=false;btn.textContent='Simpan Target'}})}
-function showModal(title,html){$('mt').textContent=title;$('mb').innerHTML=html;document.body.classList.add('modal-open');$('modal').classList.add('show')}
-function closeModal(){if($('modal').classList.contains('scanner-modal'))stopScanner();$('modal').classList.remove('show');$('modal').classList.remove('scanner-modal');document.body.classList.remove('modal-open')}
+let savedScrollY=0;
+function showModal(title,html){$('mt').textContent=title;$('mb').innerHTML=html;if(!document.body.classList.contains('modal-open'))savedScrollY=window.pageYOffset||document.documentElement.scrollTop||0;document.body.classList.add('modal-open');$('modal').classList.add('show')}
+function closeModal(){if($('modal').classList.contains('scanner-modal'))stopScanner();$('modal').classList.remove('show');$('modal').classList.remove('scanner-modal');document.body.classList.remove('modal-open');const y=savedScrollY;window.scrollTo(0,y);requestAnimationFrame(()=>window.scrollTo(0,y));setTimeout(()=>window.scrollTo(0,y),60)}
 function openProfile(){const fallback={name:'',role:'',id:'',phone:'',joinDate:'',email:''};const p=Object.assign({},fallback,(D&&D.profile)||{});showModal('Profil Pekerja',`<div class="profile-hero"><img class="profile-avatar" src="${PROFILE_PHOTO}" alt="Foto Jalludin"><h2>${esc(p.name)}</h2><p class="muted">${esc(p.role)}</p></div>${[['ID Pekerja',p.id],['No. HP',p.phone],['Join Date',p.joinDate],['Email',p.email]].map(x=>`<div class="item"><span class="muted">${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}`)}
 function showDetail(id){const r=(D&&D.recent||[]).find(x=>x.id===id);if(!r){toast('Detail tidak ditemukan.');return}showModal('Detail Aktivasi',`<p><b>${esc(r.number)}</b></p><p class="muted">${esc(r.brand)} · ${esc(r.category)} · ${esc(r.activationDate)}</p><p>Status: <span class="pill ${statusClass(r.status)}">${esc(r.status)}</span></p><div class="row"><button class="btn light" type="button" data-action="edit" data-id="${esc(id)}">Edit</button><button class="btn danger" type="button" data-action="delete" data-id="${esc(id)}">Hapus</button></div>`)}
 function editRecord(id){const r=(D&&D.recent||[]).find(x=>x.id===id);if(!r)return;showModal('Edit Nomor',`<label>Nomor</label><input id="editNumber" value="${esc(r.number)}"><label>Brand</label><select id="editBrand"><option ${r.brand==='Smartfren'?'selected':''}>Smartfren</option><option ${r.brand==='XL'?'selected':''}>XL</option><option ${r.brand==='AXIS'?'selected':''}>AXIS</option></select><label>Kategori</label><select id="editCategory"><option ${r.category==='Reguler'?'selected':''}>Reguler</option><option ${r.category==='Seeding'?'selected':''}>Seeding</option></select><label>Tanggal</label><input id="editDate" type="date" value="${esc(r.activationDate)}"><button class="btn full" type="button" data-action="save-edit" data-id="${esc(id)}">Simpan Perubahan</button>`)}
@@ -217,19 +218,28 @@ function beep(){
   o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+0.18);
  }catch(_e){}
 }
+const pendingScans=new Set();
 function handleLiveBarcode(raw){
  if(scanLock)return;
  const candidate=extractPhoneCandidate(raw);
  if(!candidate){$('scanStatus').textContent='Terbaca: '+String(raw).slice(0,40)+' (bukan nomor HP). Coba barcode lainnya di kartu.';return;}
  if(draft.some(x=>canonicalPhone(x)===candidate)){$('scanStatus').textContent='Nomor '+candidate+' sudah ada di daftar. Arahkan ke kartu berikutnya.';return;}
+ if(pendingScans.has(candidate))return;
  scanLock=true;setTimeout(()=>{scanLock=false},1500);
+ pendingScans.add(candidate);
  beep();
- draft.push(candidate);renderDraft();
  stopScanner();closeModal();
- toast('Nomor '+candidate+' ditambahkan ke daftar.');
+ toast('Memeriksa nomor '+candidate+'...');
+ const addIt=msg=>{if(!draft.some(x=>canonicalPhone(x)===candidate)){draft.push(candidate);renderDraft();}toast(msg);};
  api('checkNumberRegistered',candidate,res=>{
-  if(res&&res.exists){const i=draft.indexOf(candidate);if(i>-1){draft.splice(i,1);renderDraft();}toast('Nomor '+candidate+' sudah terdaftar, dihapus dari daftar.');}
- });
+  pendingScans.delete(candidate);
+  if(res&&res.exists){
+   const r=res.record||{};
+   toast('Nomor '+candidate+' sudah pernah diinput'+(r.brand?' ('+r.brand+(r.activationDate?', '+r.activationDate:'')+')':'')+'. Tidak ditambahkan.');
+   return;
+  }
+  addIt('Nomor '+candidate+' ditambahkan ke daftar.');
+ },()=>{pendingScans.delete(candidate);addIt('Server tidak bisa dicek, nomor '+candidate+' tetap ditambahkan ke daftar.');});
 }
 function stopScanner(){
  if(scannerTimer){clearTimeout(scannerTimer);scannerTimer=null;}
